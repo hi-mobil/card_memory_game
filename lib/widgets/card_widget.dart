@@ -32,38 +32,37 @@ class _CardWidgetState extends State<CardWidget> {
             ),
           ],
         ),
-        child:
-            flipped
-                ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Image.asset(
-                      widget.imagePath,
-                      width: 140,
-                      height: 140,
-                      fit: BoxFit.contain,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      widget.label,
-                      style: const TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.pink,
-                      ),
-                    ),
-                  ],
-                )
-                : Center(
-                  child: Text(
-                    '?',
-                    style: TextStyle(
-                      fontSize: 96,
-                      color: Colors.yellow[700],
+        child: flipped
+            ? Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    widget.imagePath,
+                    width: 140,
+                    height: 140,
+                    fit: BoxFit.contain,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    widget.label,
+                    style: const TextStyle(
+                      fontSize: 36,
                       fontWeight: FontWeight.bold,
+                      color: Colors.pink,
                     ),
                   ),
+                ],
+              )
+            : Center(
+                child: Text(
+                  '?',
+                  style: TextStyle(
+                    fontSize: 96,
+                    color: Colors.yellow[700],
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
+              ),
       ),
     );
   }

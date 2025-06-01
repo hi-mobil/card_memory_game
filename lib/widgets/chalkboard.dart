@@ -65,6 +65,9 @@ class _ChalkboardState extends State<Chalkboard> {
   Offset? _scaleHandlePosition;
   bool _isRotating = false;
   bool _isScaling = false;
+  bool _isDragging = false;
+  bool _isHandleRotating = false;
+  bool _isHandleScaling = false;
 
   @override
   void dispose() {
@@ -152,6 +155,10 @@ class _ChalkboardState extends State<Chalkboard> {
       setState(() {
         _selectedImage = image;
         _updateHandlePositions(image);
+        _isDragging = false;
+        _isRotating = false;
+        _isScaling = false;
+        _dragStartPosition = Offset.zero;
       });
     }
   }
@@ -162,14 +169,14 @@ class _ChalkboardState extends State<Chalkboard> {
 
     // 회전 핸들 위치 (우측 상단)
     _rotationHandlePosition = Offset(
-      image.position.dx + imageWidth + 20,
-      image.position.dy - 20,
+      image.position.dx + imageWidth,
+      image.position.dy,
     );
 
     // 크기 조절 핸들 위치 (우측 하단)
     _scaleHandlePosition = Offset(
-      image.position.dx + imageWidth + 20,
-      image.position.dy + imageHeight + 20,
+      image.position.dx + imageWidth,
+      image.position.dy + imageHeight,
     );
   }
 
@@ -179,116 +186,126 @@ class _ChalkboardState extends State<Chalkboard> {
         _selectedImage = null;
         _rotationHandlePosition = null;
         _scaleHandlePosition = null;
+        _isDragging = false;
+        _isRotating = false;
+        _isScaling = false;
+        _dragStartPosition = Offset.zero;
       });
     }
   }
 
   void _onScaleStart(ScaleStartDetails details) {
-    if (_selectedImage != null) {
-      final localPosition = details.localFocalPoint;
+    if (!_isImageMode || _selectedImage == null) return;
 
-      // 회전 핸들 영역 확인
-      if (_rotationHandlePosition != null &&
-          (localPosition - _rotationHandlePosition!).distance < 20) {
-        _isRotating = true;
-        _dragStartPosition = localPosition;
-        return;
-      }
+    final localPosition = details.localFocalPoint;
 
-      // 크기 조절 핸들 영역 확인
-      if (_scaleHandlePosition != null &&
-          (localPosition - _scaleHandlePosition!).distance < 20) {
-        _isScaling = true;
-        _dragStartPosition = localPosition;
-        return;
-      }
-
-      // 이미지 영역 확인
-      final imageRect = Rect.fromLTWH(
-        _selectedImage!.position.dx,
-        _selectedImage!.position.dy,
-        _selectedImage!.image.width.toDouble() * _selectedImage!.scale,
-        _selectedImage!.image.height.toDouble() * _selectedImage!.scale,
+    // 회전 핸들 영역 확인
+    if (_rotationHandlePosition != null) {
+      final rotationHandleRect = Rect.fromCenter(
+        center: _rotationHandlePosition!,
+        width: 40,
+        height: 40,
       );
-
-      if (imageRect.contains(localPosition)) {
+      if (rotationHandleRect.contains(localPosition)) {
+        _isRotating = true;
+        _isDragging = false;
+        _isScaling = false;
         _dragStartPosition = localPosition;
+        return;
       }
+    }
+
+    // 크기 조절 핸들 영역 확인
+    if (_scaleHandlePosition != null) {
+      final scaleHandleRect = Rect.fromCenter(
+        center: _scaleHandlePosition!,
+        width: 40,
+        height: 40,
+      );
+      if (scaleHandleRect.contains(localPosition)) {
+        _isScaling = true;
+        _isDragging = false;
+        _isRotating = false;
+        _dragStartPosition = localPosition;
+        return;
+      }
+    }
+
+    // 이미지 영역 확인
+    final imageRect = Rect.fromLTWH(
+      _selectedImage!.position.dx,
+      _selectedImage!.position.dy,
+      _selectedImage!.image.width.toDouble() * _selectedImage!.scale,
+      _selectedImage!.image.height.toDouble() * _selectedImage!.scale,
+    );
+
+    if (imageRect.contains(localPosition)) {
+      _isDragging = true;
+      _isRotating = false;
+      _isScaling = false;
+      _dragStartPosition = localPosition;
     }
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
-    if (_selectedImage != null) {
-      final localPosition = details.localFocalPoint;
+    if (!_isImageMode || _selectedImage == null) return;
 
-      setState(() {
-        if (_isRotating) {
-          // 회전 계산
-          final center = Offset(
-            _selectedImage!.position.dx +
-                _selectedImage!.image.width.toDouble() *
-                    _selectedImage!.scale /
-                    2,
-            _selectedImage!.position.dy +
-                _selectedImage!.image.height.toDouble() *
-                    _selectedImage!.scale /
-                    2,
-          );
-          final startAngle = (_dragStartPosition - center).direction;
-          final currentAngle = (localPosition - center).direction;
-          final rotationDelta = currentAngle - startAngle;
+    final localPosition = details.localFocalPoint;
+    final imageCenter = Offset(
+      _selectedImage!.position.dx +
+          _selectedImage!.image.width.toDouble() * _selectedImage!.scale / 2,
+      _selectedImage!.position.dy +
+          _selectedImage!.image.height.toDouble() * _selectedImage!.scale / 2,
+    );
 
-          _selectedImage = _selectedImage!.copyWith(
-            rotation: _selectedImage!.rotation + rotationDelta,
-          );
-          _dragStartPosition = localPosition;
-        } else if (_isScaling) {
-          // 크기 조절 계산
-          final center = Offset(
-            _selectedImage!.position.dx +
-                _selectedImage!.image.width.toDouble() *
-                    _selectedImage!.scale /
-                    2,
-            _selectedImage!.position.dy +
-                _selectedImage!.image.height.toDouble() *
-                    _selectedImage!.scale /
-                    2,
-          );
-          final startDistance = (_dragStartPosition - center).distance;
-          final currentDistance = (localPosition - center).distance;
-          final scaleDelta = currentDistance / startDistance;
+    if (_isRotating) {
+      // 회전 계산
+      final startAngle = (_dragStartPosition - imageCenter).direction;
+      final currentAngle = (localPosition - imageCenter).direction;
+      final rotationDelta = currentAngle - startAngle;
 
-          _selectedImage = _selectedImage!.copyWith(
-            scale: (_selectedImage!.scale * scaleDelta).clamp(0.1, 5.0),
-          );
-          _dragStartPosition = localPosition;
-        } else if (_dragStartPosition != Offset.zero) {
-          // 이미지 이동
-          _selectedImage = _selectedImage!.copyWith(
-            position:
-                _selectedImage!.position + (localPosition - _dragStartPosition),
-          );
-          _dragStartPosition = localPosition;
-        }
+      _selectedImage = _selectedImage!.copyWith(
+        rotation: _selectedImage!.rotation + rotationDelta,
+      );
+      _dragStartPosition = localPosition;
+      _updateHandlePositions(_selectedImage!);
+      setState(() {});
+    } else if (_isScaling) {
+      // 크기 조절 계산
+      final startDistance = (_dragStartPosition - imageCenter).distance;
+      final currentDistance = (localPosition - imageCenter).distance;
+      final scaleDelta = currentDistance / startDistance;
 
-        // 핸들 위치 업데이트
-        _updateHandlePositions(_selectedImage!);
-      });
+      _selectedImage = _selectedImage!.copyWith(
+        scale: (_selectedImage!.scale * scaleDelta).clamp(0.1, 5.0),
+      );
+      _dragStartPosition = localPosition;
+      _updateHandlePositions(_selectedImage!);
+      setState(() {});
+    } else if (_isDragging) {
+      // 이미지 이동
+      final delta = localPosition - _dragStartPosition;
+      _selectedImage = _selectedImage!.copyWith(
+        position: _selectedImage!.position + delta,
+      );
+      _dragStartPosition = localPosition;
+      _updateHandlePositions(_selectedImage!);
+      setState(() {});
     }
   }
 
   void _onScaleEnd(ScaleEndDetails details) {
-    if (_selectedImage != null) {
-      setState(() {
-        final index =
-            _placedImages.indexWhere((img) => img.id == _selectedImage!.id);
-        if (index != -1) {
-          _placedImages[index] = _selectedImage!;
-        }
-        _isRotating = false;
-        _isScaling = false;
-        _dragStartPosition = Offset.zero;
-      });
+    if (!_isImageMode || _selectedImage == null) return;
+
+    final index =
+        _placedImages.indexWhere((img) => img.id == _selectedImage!.id);
+    if (index != -1) {
+      _placedImages[index] = _selectedImage!;
+      _isRotating = false;
+      _isScaling = false;
+      _isDragging = false;
+      _dragStartPosition = Offset.zero;
+      setState(() {});
     }
   }
 
@@ -298,6 +315,126 @@ class _ChalkboardState extends State<Chalkboard> {
         _placedImages.removeWhere((img) => img.id == _selectedImage!.id);
         _selectedImage = null;
       });
+    }
+  }
+
+  void _onRotateHandlePanStart(DragStartDetails details) {
+    _isHandleRotating = true;
+    _dragStartPosition = details.localPosition;
+  }
+
+  void _onRotateHandlePanUpdate(DragUpdateDetails details) {
+    if (_selectedImage == null) return;
+    final image = _selectedImage!;
+    final imageWidth = image.image.width.toDouble() * image.scale;
+    final imageHeight = image.image.height.toDouble() * image.scale;
+    final center = Offset(
+      image.position.dx + imageWidth / 2,
+      image.position.dy + imageHeight / 2,
+    );
+    final startAngle = (_dragStartPosition +
+            _rotationHandlePosition! -
+            Offset(20, 20) -
+            center)
+        .direction;
+    final currentAngle = (details.localPosition +
+            _rotationHandlePosition! -
+            Offset(20, 20) -
+            center)
+        .direction;
+    final rotationDelta = currentAngle - startAngle;
+    setState(() {
+      _selectedImage = image.copyWith(
+        rotation: image.rotation + rotationDelta,
+      );
+      _updateHandlePositions(_selectedImage!);
+      _dragStartPosition = details.localPosition;
+    });
+  }
+
+  void _onRotateHandlePanEnd(DragEndDetails details) {
+    _isHandleRotating = false;
+    _dragStartPosition = Offset.zero;
+    if (_selectedImage != null) {
+      final idx =
+          _placedImages.indexWhere((img) => img.id == _selectedImage!.id);
+      if (idx != -1)
+        setState(() {
+          _placedImages[idx] = _selectedImage!;
+        });
+    }
+  }
+
+  void _onScaleHandlePanStart(DragStartDetails details) {
+    _isHandleScaling = true;
+    _dragStartPosition = details.localPosition;
+  }
+
+  void _onScaleHandlePanUpdate(DragUpdateDetails details) {
+    if (_selectedImage == null) return;
+    final image = _selectedImage!;
+    final imageWidth = image.image.width.toDouble() * image.scale;
+    final imageHeight = image.image.height.toDouble() * image.scale;
+    final center = Offset(
+      image.position.dx + imageWidth / 2,
+      image.position.dy + imageHeight / 2,
+    );
+    final startDistance =
+        (_dragStartPosition + _scaleHandlePosition! - Offset(20, 20) - center)
+            .distance;
+    final currentDistance = (details.localPosition +
+            _scaleHandlePosition! -
+            Offset(20, 20) -
+            center)
+        .distance;
+    final scaleDelta = currentDistance / startDistance;
+    setState(() {
+      _selectedImage = image.copyWith(
+        scale: (image.scale * scaleDelta).clamp(0.1, 5.0),
+      );
+      _updateHandlePositions(_selectedImage!);
+      _dragStartPosition = details.localPosition;
+    });
+  }
+
+  void _onScaleHandlePanEnd(DragEndDetails details) {
+    _isHandleScaling = false;
+    _dragStartPosition = Offset.zero;
+    if (_selectedImage != null) {
+      final idx =
+          _placedImages.indexWhere((img) => img.id == _selectedImage!.id);
+      if (idx != -1)
+        setState(() {
+          _placedImages[idx] = _selectedImage!;
+        });
+    }
+  }
+
+  void _onImagePanStart(DragStartDetails details) {
+    _isDragging = true;
+    _dragStartPosition = details.localPosition;
+  }
+
+  void _onImagePanUpdate(DragUpdateDetails details) {
+    if (_selectedImage == null) return;
+    setState(() {
+      _selectedImage = _selectedImage!.copyWith(
+        position: _selectedImage!.position + details.delta,
+      );
+      _updateHandlePositions(_selectedImage!);
+    });
+  }
+
+  void _onImagePanEnd(DragEndDetails details) {
+    _isDragging = false;
+    _dragStartPosition = Offset.zero;
+    if (_selectedImage != null) {
+      final idx =
+          _placedImages.indexWhere((img) => img.id == _selectedImage!.id);
+      if (idx != -1)
+        setState(() {
+          _placedImages[idx] = _selectedImage!;
+        });
     }
   }
 
@@ -473,9 +610,18 @@ class _ChalkboardState extends State<Chalkboard> {
                         top: image.position.dy,
                         child: GestureDetector(
                           onTap: () => _onImageTap(image),
-                          onScaleStart: _onScaleStart,
-                          onScaleUpdate: _onScaleUpdate,
-                          onScaleEnd: _onScaleEnd,
+                          onPanStart:
+                              image.id == _selectedImage?.id && _isImageMode
+                                  ? _onImagePanStart
+                                  : null,
+                          onPanUpdate:
+                              image.id == _selectedImage?.id && _isImageMode
+                                  ? _onImagePanUpdate
+                                  : null,
+                          onPanEnd:
+                              image.id == _selectedImage?.id && _isImageMode
+                                  ? _onImagePanEnd
+                                  : null,
                           child: Container(
                             decoration: BoxDecoration(
                               border: Border.all(
@@ -507,56 +653,9 @@ class _ChalkboardState extends State<Chalkboard> {
                     if (!_isImageMode)
                       GestureDetector(
                         onTap: _onCanvasTap,
-                        onScaleStart: (details) {
-                          if (_selectedImage == null) {
-                            if (_isEraser) {
-                              _eraseAtPoint(details.localFocalPoint);
-                            } else {
-                              setState(() {
-                                drawingPoints.add(
-                                  DrawingPoint(
-                                    details.localFocalPoint,
-                                    Paint()
-                                      ..color = _selectedColor
-                                      ..isAntiAlias = true
-                                      ..strokeWidth = _strokeWidth
-                                      ..strokeCap = StrokeCap.round,
-                                  ),
-                                );
-                              });
-                            }
-                          }
-                          _onScaleStart(details);
-                        },
-                        onScaleUpdate: (details) {
-                          if (_selectedImage == null) {
-                            if (_isEraser) {
-                              _eraseAtPoint(details.localFocalPoint);
-                            } else {
-                              setState(() {
-                                drawingPoints.add(
-                                  DrawingPoint(
-                                    details.localFocalPoint,
-                                    Paint()
-                                      ..color = _selectedColor
-                                      ..isAntiAlias = true
-                                      ..strokeWidth = _strokeWidth
-                                      ..strokeCap = StrokeCap.round,
-                                  ),
-                                );
-                              });
-                            }
-                          }
-                          _onScaleUpdate(details);
-                        },
-                        onScaleEnd: (details) {
-                          if (_selectedImage == null) {
-                            setState(() {
-                              drawingPoints.add(null);
-                            });
-                          }
-                          _onScaleEnd(details);
-                        },
+                        onScaleStart: _onScaleStart,
+                        onScaleUpdate: _onScaleUpdate,
+                        onScaleEnd: _onScaleEnd,
                         child: CustomPaint(
                           key: _canvasKey,
                           painter: _DrawingPainter(
@@ -588,53 +687,78 @@ class _ChalkboardState extends State<Chalkboard> {
                         ),
                       ),
                     if (_selectedImage != null &&
-                        _rotationHandlePosition != null)
+                        _rotationHandlePosition != null &&
+                        _isImageMode)
                       Positioned(
-                        left: _rotationHandlePosition!.dx - 10,
-                        top: _rotationHandlePosition!.dy - 10,
-                        child: GestureDetector(
-                          onScaleStart: _onScaleStart,
-                          onScaleUpdate: _onScaleUpdate,
-                          onScaleEnd: _onScaleEnd,
-                          child: Container(
-                            width: 20,
-                            height: 20,
-                            decoration: BoxDecoration(
-                              color: Colors.blue,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                Icons.rotate_right,
-                                color: Colors.white,
-                                size: 12,
+                        left: _rotationHandlePosition!.dx - 20,
+                        top: _rotationHandlePosition!.dy - 20,
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.grab,
+                          child: GestureDetector(
+                            onPanStart: _onRotateHandlePanStart,
+                            onPanUpdate: _onRotateHandlePanUpdate,
+                            onPanEnd: _onRotateHandlePanEnd,
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: Colors.blue,
+                                shape: BoxShape.circle,
+                                border:
+                                    Border.all(color: Colors.white, width: 2),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: const Center(
+                                child: Icon(
+                                  Icons.rotate_right,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    if (_selectedImage != null && _scaleHandlePosition != null)
+                    if (_selectedImage != null &&
+                        _scaleHandlePosition != null &&
+                        _isImageMode)
                       Positioned(
-                        left: _scaleHandlePosition!.dx - 10,
-                        top: _scaleHandlePosition!.dy - 10,
-                        child: GestureDetector(
-                          onScaleStart: _onScaleStart,
-                          onScaleUpdate: _onScaleUpdate,
-                          onScaleEnd: _onScaleEnd,
-                          child: Container(
-                            width: 20,
-                            height: 20,
-                            decoration: BoxDecoration(
-                              color: Colors.blue,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                Icons.aspect_ratio,
-                                color: Colors.white,
-                                size: 12,
+                        left: _scaleHandlePosition!.dx - 20,
+                        top: _scaleHandlePosition!.dy - 20,
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.grab,
+                          child: GestureDetector(
+                            onPanStart: _onScaleHandlePanStart,
+                            onPanUpdate: _onScaleHandlePanUpdate,
+                            onPanEnd: _onScaleHandlePanEnd,
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: Colors.blue,
+                                shape: BoxShape.circle,
+                                border:
+                                    Border.all(color: Colors.white, width: 2),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: const Center(
+                                child: Icon(
+                                  Icons.aspect_ratio,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
                               ),
                             ),
                           ),
